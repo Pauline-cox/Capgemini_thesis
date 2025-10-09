@@ -1,10 +1,7 @@
-# ==============================================================================
 # Data Exploration & Preprocessing
-# ==============================================================================
 
-# ------------------------------------------------------------------------------
-# Target Variable Exploration & Processing
-# ------------------------------------------------------------------------------
+# --- Target Variable Exploration & Processing ---
+
 explore_target <- function() {
 
   cat("Loaded Eneco data:", nrow(eneco_data), "rows\n")
@@ -166,9 +163,8 @@ explore_target <- function() {
 }
 
 
-# ------------------------------------------------------------------------------
-# Full Data Exploration & Preprocessing
-# ------------------------------------------------------------------------------
+# --- Full data exploration & preprocessing ---
+
 explore_full_data <- function() {
   
   # Filter to 2023-2024

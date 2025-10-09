@@ -1,60 +1,39 @@
-# ==============================================================================
-# Feature Selection for SARIMAX (Verbose Version)
-# ==============================================================================
+# FEATURE SELECTION PIPELINE FOR SARIMAX
 
-sarimax_feature_selection <- function(corr_min = 0.30, vif_max = 5) {
-  # Prepare data
-  y <- model_data$total_consumption_kWh
+# --- CORRELATION FILTER ---
+
+corr_filter <- function(dt,
+                        target_col = "total_consumption_kWh",
+                        corr_min = 0.30) {
   
+  # Columns to exclude
   exclude_cols <- c(
     "interval", "total_consumption_kWh", "date",
     "occ_co2", "occ_temp",
     "lag_24", "lag_72", "lag_168", "lag_336", "lag_504",
     "rollmean_24", "rollmean_168"
   )
+  feature_cols <- setdiff(names(dt), exclude_cols)
+  y <- dt[[target_col]]
   
-  feature_cols <- setdiff(names(model_data), exclude_cols)
-  X <- as.matrix(model_data[, ..feature_cols])
+  # Compute correlations
+  cors <- sapply(feature_cols, function(v) cor(dt[[v]], y, use = "complete.obs"))
+  cors <- sort(cors, decreasing = TRUE)
   
-  cat("\n=== FEATURE SELECTION START ===\n")
-  cat("Initial features:", ncol(X), "\n")
-  cat("Feature names:", paste(colnames(X), collapse = ", "), "\n\n")
+  # Print and filter
+  print(round(cors[order(-abs(cors))], 3))
   
-  # Step 1: Drop non-finite or constant columns
-  nonfinite <- apply(X, 2, function(z) !all(is.finite(z)))
-  nzv <- apply(X, 2, function(z) var(z, na.rm = TRUE) <= 1e-12)
-  drop0 <- nonfinite | nzv
+  kept <- names(cors[!is.na(cors) & abs(cors) >= corr_min])
+  cat(sprintf("\nCorrelation filter (|r| ≥ %.2f): kept %d/%d predictors\n",
+              corr_min, length(kept), length(cors)))
+  cat("Kept:", paste(kept, collapse = ", "), "\n\n")
   
-  if (any(drop0)) {
-    cat("Dropping", sum(drop0), "non-finite/constant columns:\n  ->",
-        paste(colnames(X)[drop0], collapse = ", "), "\n\n")
-    X <- X[, !drop0, drop = FALSE]
-  } else {
-    cat("No non-finite or constant columns found.\n\n")
-  }
-  
-  # Step 2: Correlation filter
-  cors <- suppressWarnings(cor(X, y, use = "pairwise.complete.obs"))
-  cors <- as.numeric(cors)
-  names(cors) <- colnames(X)
-  
-  keep_idx <- which(!is.na(cors) & abs(cors) >= corr_min)
-  cat(sprintf("Correlation filter (|r| >= %.2f): kept %d / %d predictors\n",
-              corr_min, length(keep_idx), ncol(X)))
-  
-  if (length(keep_idx) == 0) {
-    cat("No features passed the correlation threshold. Exiting.\n")
-    return(list(selected_features = character(), audit = data.frame()))
-  }
-  
-  kept_names_corr <- colnames(X)[keep_idx]
-  Xc <- X[, kept_names_corr, drop = FALSE]
-  cors_kept <- cors[kept_names_corr]
-  
-  cat("Kept after correlation filter:\n  ->",
-      paste(kept_names_corr, collapse = ", "), "\n\n")
-  
-  # Step 3: Define VIF function
+  return(kept)
+}
+
+# --- VIF FILTER (ITERATIVE) ---
+
+vif_prune <- function(dt, vars, vif_max = 5) {
   vif_vec <- function(M) {
     p <- ncol(M)
     out <- rep(NA_real_, p)
@@ -63,12 +42,9 @@ sarimax_feature_selection <- function(corr_min = 0.30, vif_max = 5) {
     for (j in seq_len(p)) {
       xj <- M[, j]
       Xmj <- M[, -j, drop = FALSE]
-      if (ncol(Xmj) == 0L) { out[j] <- 1; next }
       df <- data.frame(xj = xj, Xmj, check.names = FALSE)
       fit <- tryCatch(lm(xj ~ ., data = df), error = function(e) NULL)
-      if (is.null(fit)) {
-        out[j] <- Inf
-      } else {
+      if (is.null(fit)) out[j] <- Inf else {
         r2 <- max(0, min(1, summary(fit)$r.squared))
         out[j] <- 1 / (1 - r2 + 1e-12)
       }
@@ -76,8 +52,7 @@ sarimax_feature_selection <- function(corr_min = 0.30, vif_max = 5) {
     out
   }
   
-  # Step 4: VIF pruning loop
-  Xv <- Xc
+  Xv <- as.data.frame(dt[, ..vars])
   step <- 0L
   repeat {
     vifs <- vif_vec(Xv)
@@ -88,33 +63,105 @@ sarimax_feature_selection <- function(corr_min = 0.30, vif_max = 5) {
     if (!is.finite(vmax) || vmax <= vif_max || ncol(Xv) <= 1L) break
     worst <- names(which.max(vifs))
     cat(sprintf("  Removing '%s' (VIF = %.2f)\n\n", worst, vmax))
-    Xv <- Xv[, setdiff(colnames(Xv), worst), drop = FALSE]
+    Xv <- Xv[, setdiff(names(Xv), worst), drop = FALSE]
     step <- step + 1L
-    if (step > 1000) { warning("VIF pruning exceeded 1000 steps; stopping."); break }
   }
   
-  final_cols <- colnames(Xv)
+  final <- names(Xv)
+  cat("\nFinal VIF-pruned features:", paste(final, collapse = ", "), "\n")
+  return(final)
+}
+
+
+# --- FORWARD AIC-BASED SARIMAX SELECTION (TRAIN + VALIDATION) ---
+
+forward_sarimax_select <- function(train_val_data, target_col, candidate_features,
+                                   order = c(2,0,2), seasonal = c(0,1,1), period = 168) {
   
-  # Step 5: Create audit summary
-  audit <- data.frame(
-    predictor = kept_names_corr,
-    corr_with_y = as.numeric(cors_kept[kept_names_corr]),
-    kept_after_vif = kept_names_corr %in% final_cols,
-    stringsAsFactors = FALSE
-  )
-  audit <- audit[order(-abs(audit$corr_with_y)), , drop = FALSE]
+  y <- ts(train_val_data[[target_col]], frequency = period)
+  best_aic <- Inf
+  selected <- c()
+  best_model <- NULL
+  aic_log <- data.table(step = integer(), feature = character(), AIC = numeric())
+  total_feats <- length(candidate_features)
   
-  # Final summary
-  cat("\n=== FEATURE SELECTION COMPLETE ===\n")
-  cat("Final features:", length(final_cols), "\n")
-  cat("Selected predictors:\n  ->", paste(final_cols, collapse = ", "), "\n\n")
+  cat(sprintf("\n Forward AIC selection with %d features\n", total_feats))
   
-  cat("Top 10 features by correlation:\n")
-  print(head(audit, 10))
-  cat("===================================\n\n")
+  for (i in seq_along(candidate_features)) {
+    feat <- candidate_features[i]
+    feats_try <- c(selected, feat)
+    cat(sprintf("\n[%02d/%02d] Testing feature: %s\n", i, total_feats, feat))
+    xreg <- as.matrix(train_val_data[, ..feats_try])
+    
+    # CSS initialization
+    fit_css <- tryCatch(
+      Arima(y, order = order,
+            seasonal = list(order = seasonal, period = period),
+            xreg = scale(xreg), method = "CSS"),
+      error = function(e) NULL
+    )
+    if (is.null(fit_css)) {
+      next
+    }
+    
+    # Refine with CSS-ML starting from CSS coefficients
+    fit_ml <- tryCatch(
+      Arima(y, order = order,
+            seasonal = list(order = seasonal, period = period),
+            xreg = scale(xreg), method = "CSS-ML",
+            fixed = coef(fit_css)),
+      error = function(e) NULL
+    )
+    fit <- if (!is.null(fit_ml)) fit_ml else fit_css
+    
+    aic <- suppressWarnings(AIC(fit))
+    if (is.null(aic) || !is.finite(aic)) {
+      next
+    }
+    
+    aic_log <- rbind(aic_log, data.table(step = nrow(aic_log) + 1, feature = feat, AIC = aic))
+    cat(sprintf("  AIC = %.2f\n", aic))
+    
+    if (length(selected) == 0) {
+      best_aic <- aic
+      selected <- feats_try
+      best_model <- fit
+      cat("  Accepted first feature:", feat, "\n")
+    } else if (aic + 2 < best_aic) {
+      best_aic <- aic
+      selected <- feats_try
+      best_model <- fit
+      cat("  Accepted:", feat, "| new best AIC =", round(best_aic, 2), "\n")
+    } else {
+      cat("  Rejected:", feat, "\n")
+    }
+  }
   
-  return(list(
-    selected_features = final_cols,
-    audit = audit
-  ))
+  cat("\n Forward selection complete.\n")
+  cat("Final selected predictors:", paste(selected, collapse = ", "), "\n\n")
+  
+  return(list(selected = selected, model = best_model, aic_log = aic_log))
+}
+
+
+# Example main usage
+sarimax_feature_selection <- function(model_data, domain_features, corr_min = 0.30, vif_max = 5) {
+  target_col <- "total_consumption_kWh"
+  
+  # Split your dataset (Train + Validation only, exclude test)
+  train_val <- model_data[as.Date(interval) < as.Date("2024-10-01")]  # adjust cutoff
+  y <- train_val[[target_col]]
+  
+  cat("=== STEP 1: Correlation filter ===\n")
+  corr_vars <- corr_filter(train_val, target_col, corr_min)
+  
+  cat("\n=== STEP 2: VIF pruning ===\n")
+  vif_vars <- vif_prune(train_val, corr_vars, vif_max)
+  
+  cat("\n=== STEP 3: Forward SARIMAX selection ===\n")
+  candidate_vars <- unique(c(vif_vars, domain_features))
+  sel <- forward_sarimax_select(train_val, target_col, candidate_vars,
+                                order = c(2,0,2), seasonal = c(0,1,1), period = 168)
+  
+  return(sel$selected)
 }

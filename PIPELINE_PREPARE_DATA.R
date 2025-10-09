@@ -10,6 +10,9 @@
 # Clear workspace
 rm(list = ls())
 
+# Set seeds for reproducibility
+set.seed(1234)  # For R
+
 # Start overall timer
 pipeline_start <- Sys.time()
 cat("\n", rep("=", 80), "\n", sep = "")
@@ -46,6 +49,7 @@ cat("    Completed in:", step_duration, "seconds\n\n")
 
 
 # --- TARGET VARIABLE EXPLORATION & PROCESSING --- 
+
 cat("STEP 3: Exploring and Processing Target Variable\n")
 step_start <- Sys.time()
 
@@ -58,6 +62,7 @@ cat("    Completed in:", step_duration, "seconds\n\n")
 
 
 # --- FULL DATA EXPLORATION & CLEANING --- 
+
 cat("STEP 4: Exploring Full Dataset with Features\n")
 step_start <- Sys.time()
 
@@ -78,6 +83,7 @@ step_duration <- round(difftime(Sys.time(), step_start, units = "secs"), 2)
 cat("    Completed in:", step_duration, "seconds\n\n")
 
 # --- FEATURE ENGINEERING --- 
+
 cat("STEP 5: Engineering Additional Features\n")
 step_start <- Sys.time()
 

@@ -1,3 +1,9 @@
+# Pipeline for SARIMA order selection and LSTM/hybrid hyperparameter tuning
+
+# Set seeds for reproducibility
+set.seed(1234)  # For R
+tensorflow::set_random_seed(1234)  # For TensorFlow/Keras
+
 source("SARIMA_GRID_SEARCH.R")
 source("LSTM_HYPERPARAM_TUNING.R")
 source("HYBRID_HYPERPARAM_TUNING.R")
@@ -26,13 +32,19 @@ lstm_opt <- lstm_bayesopt_train(train_data, val_data, feature_columns)
 cat("Running Hybrid SARIMA–LSTM Bayesian Optimization")
 hybrid_opt <- hybrid_bayesopt_train(train_data, val_data, feature_columns, sarima_order = c(2,0,2), sarima_seasonal = c(1,1,1))
 
-# --- PRINT RESULTS ---
+# --- PRINT AND SAVE RESULTS ---
 
 cat("SARIMA result")
 print(sarima_opt)
+order_best <- sarima_opt$best_order
+seasonal_best <- sarima_opt$best_seasonal
 
 cat("LSTM result")
 print(lstm_opt) 
+lstm_paramters_best <- lstm_opt$best_params
 
 cat("Hybrid result")
 print(hybrid_opt)
+hybrid_paramters_best <- lstm_opt$best_params
+
+

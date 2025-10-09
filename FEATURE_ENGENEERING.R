@@ -1,3 +1,5 @@
+# Function to add engeneerged features to the dataset
+
 add_engineered_features <- function(dt) {
   dt <- copy(dt)
   
@@ -14,19 +16,22 @@ add_engineered_features <- function(dt) {
   # Cyclical encoding
   dt[, hour_sin := sin(2 * pi * hour / 24)]
   dt[, hour_cos := cos(2 * pi * hour / 24)]
-  dt[, dow_sin := sin(2 * pi * weekday / 7)]
-  dt[, dow_cos := cos(2 * pi * weekday / 7)]
+  dt[, dow_sin  := sin(2 * pi * weekday / 7)]
+  dt[, dow_cos  := cos(2 * pi * weekday / 7)]
+  dt[, month_sin := sin(2 * pi * month / 12)]
+  dt[, month_cos := cos(2 * pi * month / 12)]
   
   # Lags
-  dt[, lag_24 := shift(total_consumption_kWh, 24)]
-  dt[, lag_72 := shift(total_consumption_kWh, 72)]
-  dt[, lag_168 := shift(total_consumption_kWh, 168)]
-  dt[, lag_336 := shift(total_consumption_kWh, 336)]
-  dt[, lag_504 := shift(total_consumption_kWh, 504)]
+  dt[, lag_24 := shift(total_consumption_kWh, 24)] # 1 day
+  dt[, lag_48 := shift(total_consumption_kWh, 48)] # 2 days
+  dt[, lag_72 := shift(total_consumption_kWh, 72)] # 3 days
+  dt[, lag_168 := shift(total_consumption_kWh, 168)] # 1 week
+  dt[, lag_336 := shift(total_consumption_kWh, 336)] # 2 weeks
+  dt[, lag_504 := shift(total_consumption_kWh, 504)] # 3 weeks
   
   # Long rolling means
-  dt[, rollmean_24 := frollmean(total_consumption_kWh, n = 24, align = "right", fill = NA)]
-  dt[, rollmean_168 := frollmean(total_consumption_kWh, n = 168, align = "right", fill = NA)]
+  dt[, rollmean_24 := shift(frollmean(total_consumption_kWh, n = 24, align = "right", fill = NA), 1)]
+  dt[, rollmean_168 := shift(frollmean(total_consumption_kWh, n = 168, align = "right", fill = NA), 1)]
   
   # Holidays (Netherlands + school + bridge days)
   nl_holidays <- as.Date(c(

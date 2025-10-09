@@ -1,4 +1,4 @@
-# Function for grid search for SARIMA order selection
+# Function for grid search for SARIMA order selection (minimal fix version + fallback retry)
 
 sarima_grid_search <- function(period = 168) {
   # Combine training + validation
@@ -7,24 +7,24 @@ sarima_grid_search <- function(period = 168) {
   
   # Stationarity test
   cat("ADF test for stationarity:\n")
-  print(adf.test(y_full, alternative = "stationary"))
+  suppressWarnings(print(adf.test(y_full, alternative = "stationary")))
   cat("\n")
   
-  # # Parameter grid
+  # Parameter grid
   # param_grid <- expand.grid(
   #   p = 0:2, d = 0, q = 0:2,
   #   P = 0:1, D = 1, Q = 0:1,
   #   seasonal = period
   # )
+  
   # Small grid for testing
   param_grid <- expand.grid(
     p = 1, d = 0, q = 1,
-    P = 1, D = 1, Q = 1,
-    seasonal = period
+    P = 1, D = 1, Q = 1
   )
   
   cat("Total combinations:", nrow(param_grid), "\n")
-
+  
   results <- data.table(
     p = integer(), d = integer(), q = integer(),
     P = integer(), D = integer(), Q = integer(),
@@ -44,20 +44,47 @@ sarima_grid_search <- function(period = 168) {
     iter_start <- Sys.time()
     
     fit <- try(
-      Arima(y_full,
-            order = c(gi$p, gi$d, gi$q),
-            seasonal = list(order = c(gi$P, gi$D, gi$Q), period = period),
-            method = "CSS-ML"),
+      suppressWarnings(
+        Arima(y_full,
+              order = c(gi$p, gi$d, gi$q),
+              seasonal = list(order = c(gi$P, gi$D, gi$Q), period = period),
+              method = "CSS-ML")
+      ),
       silent = TRUE
     )
+    
+    # Retry with CSS→ML warm start if CSS-ML fails
+    if (inherits(fit, "try-error")) {
+      cat("Failed initial fit, retrying with CSS→ML warm start...\n")
+      fit <- try(
+        suppressWarnings(
+          Arima(y_full,
+                model = Arima(y_full,
+                              order = c(gi$p, gi$d, gi$q),
+                              seasonal = list(order = c(gi$P, gi$D, gi$Q), period = period),
+                              method = "CSS",
+                              include.mean = FALSE),
+                method = "ML",
+                include.mean = FALSE,
+                transform.pars = FALSE,
+                optim.control = list(maxit = 5000, reltol = 1e-8))
+        ),
+        silent = TRUE
+      )
+    }
     
     if (inherits(fit, "try-error")) {
       cat("Failed: ", conditionMessage(attr(fit, "condition")), "\n")
       results <- rbind(
         results,
-        data.table(gi, AIC = NA, AICc = NA, BIC = NA,
-                   loglik = NA, sigma2 = NA,
-                   convergence = FALSE, error_msg = as.character(fit))
+        data.table(
+          p = gi$p, d = gi$d, q = gi$q,
+          P = gi$P, D = gi$D, Q = gi$Q,
+          AIC = NA, AICc = NA, BIC = NA,
+          loglik = NA, sigma2 = NA,
+          convergence = FALSE, error_msg = as.character(fit)
+        ),
+        fill = TRUE
       )
       next
     }
@@ -70,7 +97,8 @@ sarima_grid_search <- function(period = 168) {
         AIC = fit$aic, AICc = fit$aicc, BIC = fit$bic,
         loglik = fit$loglik, sigma2 = fit$sigma2,
         convergence = TRUE, error_msg = ""
-      )
+      ),
+      fill = TRUE
     )
     
     cat(sprintf("Done | BIC: %.2f | AIC: %.2f\n", fit$bic, fit$aic))

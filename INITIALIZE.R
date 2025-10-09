@@ -1,6 +1,4 @@
-# ==============================================================================
 # Environment Initialization
-# ==============================================================================
 
 initialize_environment <- function() {
   
@@ -14,7 +12,8 @@ initialize_environment <- function() {
     "readxl", "data.table", "dplyr", "tidyr", "tibble", "stringr", "MASS", "tseries",
     "lubridate", "furrr", "future", "corrplot", "ggplot2", "forecast", "urca",
     "randomForest", "caret", "recipes", "Metrics", "xgboost", "zoo", "purrr", "ranger",
-    "SHAPforxgboost", "reshape2", "psych", "viridis", "Amelia", "VIM", "tsibble", "car"
+    "SHAPforxgboost", "reshape2", "psych", "viridis", "Amelia", "VIM", "tsibble", "car", 
+    "ParBayesianOptimization"
   )
   
   new_packages <- packages[!(packages %in% installed.packages()[, "Package"])]
@@ -37,8 +36,4 @@ initialize_environment <- function() {
   if (!exists("%||%", mode = "function")) {
     `%||%` <<- function(a, b) if (!is.null(a)) a else b
   }
-  
-  # Set seeds for reproducibility
-  set.seed(1234)  # For R
-  tensorflow::set_random_seed(1234)  # For TensorFlow/Keras
 }

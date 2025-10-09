@@ -1,10 +1,7 @@
-# ==============================================================================
 # Data Loading Functions
-# ==============================================================================
 
-# ------------------------------------------------------------------------------
-# Load Eneco energy consumption data
-# ------------------------------------------------------------------------------
+# --- Load Eneco energy consumption data ---
+
 load_eneco_data <- function() {
   eneco_2023 <- read_excel("Data/Eneco/Kantoorgebouw K20016264_2023_871687460008204791_E (1).xlsx")
   eneco_2024 <- read_excel("Data/Eneco/Kantoorgebouw - K20016264_2024_871687460008204791_E (1).xlsx")
@@ -16,9 +13,8 @@ load_eneco_data <- function() {
 }
 
 
-# ------------------------------------------------------------------------------
-# Load sensor data (occupancy + comfort)
-# ------------------------------------------------------------------------------
+# --- Load sensor data (occupancy + comfort) ---
+
 load_sensor_data <- function() {
   
   # Load and filter sensor data
@@ -183,9 +179,8 @@ load_sensor_data <- function() {
 }
 
 
-# ------------------------------------------------------------------------------
-# Load KNMI weather data
-# ------------------------------------------------------------------------------
+# --- Load KNMI weather data ---
+
 load_knmi_data <- function() {
   
   KNMI_raw <- readLines("Data/KNMI.txt")
@@ -216,9 +211,9 @@ load_knmi_data <- function() {
 }
 
 
-# ------------------------------------------------------------------------------
-# Combine all datasets
-# ------------------------------------------------------------------------------
+
+# --- Combine all datasets ---
+
 combine_data <- function() {
   
   # Aggregate Eneco to hourly
@@ -248,9 +243,8 @@ combine_data <- function() {
 }
 
 
-# ------------------------------------------------------------------------------
-# Load all data at once
-# ------------------------------------------------------------------------------
+# --- Optional: Load all data at once ---
+
 load_all_data <- function() {
   
   message("Loading Eneco data...")
