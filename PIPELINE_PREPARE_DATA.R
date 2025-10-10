@@ -11,7 +11,7 @@
 rm(list = ls())
 
 # Set seeds for reproducibility
-set.seed(1234)  # For R
+set.seed(1234)
 
 # Start overall timer
 pipeline_start <- Sys.time()

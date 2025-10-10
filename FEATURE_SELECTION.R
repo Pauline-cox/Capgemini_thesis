@@ -2,15 +2,13 @@
 
 # --- CORRELATION FILTER ---
 
-corr_filter <- function(dt,
-                        target_col = "total_consumption_kWh",
-                        corr_min = 0.30) {
+corr_filter <- function(dt, target_col = "total_consumption_kWh", corr_min = 0.30) {
   
   # Columns to exclude
   exclude_cols <- c(
     "interval", "total_consumption_kWh", "date",
     "occ_co2", "occ_temp",
-    "lag_24", "lag_72", "lag_168", "lag_336", "lag_504",
+    "lag_24", "lag_48", "lag_72", "lag_168", "lag_336", "lag_504",
     "rollmean_24", "rollmean_168"
   )
   feature_cols <- setdiff(names(dt), exclude_cols)
@@ -76,7 +74,7 @@ vif_prune <- function(dt, vars, vif_max = 5) {
 # --- FORWARD AIC-BASED SARIMAX SELECTION (TRAIN + VALIDATION) ---
 
 forward_sarimax_select <- function(train_val_data, target_col, candidate_features,
-                                   order = c(2,0,2), seasonal = c(0,1,1), period = 168) {
+                                   order, seasonal, period = 168) {
   
   y <- ts(train_val_data[[target_col]], frequency = period)
   best_aic <- Inf

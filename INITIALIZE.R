@@ -13,7 +13,7 @@ initialize_environment <- function() {
     "lubridate", "furrr", "future", "corrplot", "ggplot2", "forecast", "urca",
     "randomForest", "caret", "recipes", "Metrics", "xgboost", "zoo", "purrr", "ranger",
     "SHAPforxgboost", "reshape2", "psych", "viridis", "Amelia", "VIM", "tsibble", "car", 
-    "ParBayesianOptimization"
+    "parBayesianOptimization"
   )
   
   new_packages <- packages[!(packages %in% installed.packages()[, "Package"])]
