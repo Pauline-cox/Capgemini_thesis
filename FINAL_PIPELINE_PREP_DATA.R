@@ -21,10 +21,9 @@ cat("Started at:", format(pipeline_start, "%Y-%m-%d %H:%M:%S"), "\n")
 cat(rep("=", 80), "\n\n", sep = "")
 
 #  --- 1. ENVIRONMENT INITIALIZATION --- 
-cat("STEP 1: Initializing Environment\n")
 step_start <- Sys.time()
 
-source("INITIALIZE.R")
+source("FINAL_INITIALIZE.R")
 initialize_environment()
 
 step_duration <- round(difftime(Sys.time(), step_start, units = "secs"), 2)
@@ -35,7 +34,7 @@ cat("    Completed in:", step_duration, "seconds\n\n")
 cat("STEP 2: Loading Data\n")
 step_start <- Sys.time()
 
-source("LOAD_DATA.R")
+source("FINAL_LOAD_DATA.R")
 eneco_data <- load_eneco_data()
 sensor_data <- load_sensor_data()
 knmi_data <- load_knmi_data()
@@ -53,7 +52,7 @@ cat("    Completed in:", step_duration, "seconds\n\n")
 cat("STEP 3: Exploring and Processing Target Variable\n")
 step_start <- Sys.time()
 
-source("DATA_EXPLORATION&CLEANING.R")
+source("FINAL_EDA.R")
 eneco_data_processed <- explore_target()
 
 cat("    Processed target dimensions:", nrow(eneco_data_processed), "observations\n")
@@ -87,7 +86,7 @@ cat("    Completed in:", step_duration, "seconds\n\n")
 cat("STEP 5: Engineering Additional Features\n")
 step_start <- Sys.time()
 
-source("FEATURE_ENGENEERING.R")
+source("FINAL_FEATURE_ENGENEERING.R")
 model_data <- add_engineered_features(clean_data)
 model_data <- model_data[interval >= as.POSIXct("2023-07-01 00:00:00") & 
                            interval <= as.POSIXct("2024-12-31 23:59:59")]

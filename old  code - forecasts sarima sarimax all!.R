@@ -11,9 +11,6 @@ suppressPackageStartupMessages({
   library(stats)
 })
 
-
-add saving forecasts and runtimes and also model fit
-
 # ===============================================================
 # 0) SETTINGS
 # ===============================================================
@@ -151,7 +148,7 @@ pca_features <- function(train_data, test_data, vars, ncomp = 3) {
 }
 
 # ===============================================================
-# 2) FUNCTION TO RUN ALL MODELS FOR A GIVEN PERIOD
+# 2) RUN ALL MODELS FOR A GIVEN PERIOD (with saving + runtime)
 # ===============================================================
 run_all_models <- function(train, test, period_label) {
   cat(sprintf("\n==================== %s ====================\n", period_label))
@@ -169,42 +166,73 @@ run_all_models <- function(train, test, period_label) {
   train_pca <- cbind(train, pca$train)
   test_pca  <- cbind(test, pca$test)
   
-  # --- FORECASTS ---
-  sarima_mod        <- sarima_forecast(train, test, ORDER, SEASONAL, PERIOD)
-  sarimax_full      <- sarimax_forecast(train, test, ORDER, SEASONAL, PERIOD, selected_xreg)
-  sarimax_base      <- sarimax_forecast(train, test, ORDER, SEASONAL, PERIOD, base_xreg)
-  sarimax_temporal  <- sarimax_forecast(train, test, ORDER, SEASONAL, PERIOD, temporal_vars)
-  sarimax_cluster   <- sarimax_forecast(train_cl, test_cl, ORDER, SEASONAL, PERIOD, c("env_cluster_num"))
-  sarimax_clustemp  <- sarimax_forecast(train_cl, test_cl, ORDER, SEASONAL, PERIOD,
-                                        c("env_cluster_num", temporal_vars))
-  sarimax_pca       <- sarimax_forecast(train_pca, test_pca, ORDER, SEASONAL, PERIOD,
-                                        c("PCA1","PCA2","PCA3"))
+  # --- RUN AND TIME ALL MODELS ---
+  model_defs <- list(
+    SARIMA = list(fun = sarima_forecast, args = list(train, test, ORDER, SEASONAL, PERIOD)),
+    SARIMAX_FULL = list(fun = sarimax_forecast, args = list(train, test, ORDER, SEASONAL, PERIOD, selected_xreg)),
+    SARIMAX_BASE = list(fun = sarimax_forecast, args = list(train, test, ORDER, SEASONAL, PERIOD, base_xreg)),
+    SARIMAX_TEMPORAL = list(fun = sarimax_forecast, args = list(train, test, ORDER, SEASONAL, PERIOD, temporal_vars)),
+    SARIMAX_CLUSTER = list(fun = sarimax_forecast, args = list(train_cl, test_cl, ORDER, SEASONAL, PERIOD, c("env_cluster_num"))),
+    SARIMAX_CLUSTEMP = list(fun = sarimax_forecast, args = list(train_cl, test_cl, ORDER, SEASONAL, PERIOD, c("env_cluster_num", temporal_vars))),
+    SARIMAX_PCA = list(fun = sarimax_forecast, args = list(train_pca, test_pca, ORDER, SEASONAL, PERIOD, c("PCA1", "PCA2", "PCA3")))
+  )
+  
+  results <- list()
+  for (m in names(model_defs)) {
+    cat(sprintf(">>> Running %s...\n", m))
+    t0 <- Sys.time()
+    fit <- do.call(model_defs[[m]]$fun, model_defs[[m]]$args)
+    runtime <- difftime(Sys.time(), t0, units = "secs")
+    results[[m]] <- list(
+      pred = fit$pred,
+      fit = fit$fit,
+      runtime = as.numeric(runtime)
+    )
+  }
   
   # --- EVALUATION ---
   actual <- test[[target_col]]
-  preds <- list(
-    SARIMA = sarima_mod$pred,
-    SARIMAX_FULL = sarimax_full$pred,
-    SARIMAX_BASE = sarimax_base$pred,
-    SARIMAX_TEMPORAL = sarimax_temporal$pred,
-    SARIMAX_CLUSTER = sarimax_cluster$pred,
-    SARIMAX_CLUSTEMP = sarimax_clustemp$pred,
-    SARIMAX_PCA = sarimax_pca$pred
-  )
+  preds <- lapply(results, `[[`, "pred")
   
   eval <- evaluate_models(actual, preds)
+  eval[, Period := period_label]
+  eval[, Runtime_s := sapply(results, function(x) x$runtime)]
   print(eval)
   
-  # --- PLOT ---
-  plot <- plot_forecasts_facet(actual, preds, paste0("Forecast Comparison — ", period_label))
-  print(plot)
+  # --- SAVE FORECAST VALUES ---
+  forecast_dt <- rbindlist(lapply(names(preds), function(nm) {
+    data.table(
+      Period = period_label,
+      Model = nm,
+      Time = seq_along(actual),
+      Actual = actual,
+      Forecast = preds[[nm]]
+    )
+  }))
   
-  return(list(eval = eval))
+  return(list(eval = eval, forecasts = forecast_dt))
 }
 
 # ===============================================================
-# 3) RUN BOTH TEST PERIODS
+# 3) EVALUATION ACROSS ALL PERIODS
 # ===============================================================
+summarize_all_results <- function(results_list) {
+  eval_all <- rbindlist(lapply(results_list, `[[`, "eval"))
+  forecasts_all <- rbindlist(lapply(results_list, `[[`, "forecasts"))
+  
+  cat("\n==================== GLOBAL EVALUATION ====================\n")
+  print(eval_all)
+  
+  # --- Combined Plot ---
+  ggplot(forecasts_all, aes(x = Time)) +
+    geom_line(aes(y = Actual), color = "black", linewidth = 1) +
+    geom_line(aes(y = Forecast, color = Model), linewidth = 0.7, alpha = 0.8) +
+    facet_grid(Period ~ Model, scales = "free_y") +
+    labs(title = "All Model Forecasts by Period", x = "Time (hours)", y = "Energy (kWh)") +
+    theme_minimal(base_size = 12)
+  
+  return(list(evaluations = eval_all, forecasts = forecasts_all))
+}
 
 trainA <- model_data[as.Date(interval) <= trainA_end]
 testA  <- model_data[as.Date(interval) >= testA_start & as.Date(interval) <= testA_end]
@@ -214,6 +242,8 @@ testB  <- model_data[as.Date(interval) >= testB_start & as.Date(interval) <= tes
 
 resA <- run_all_models(trainA, testA, "Test Period A")
 resB <- run_all_models(trainB, testB, "Test Period B")
+
+final_summary <- summarize_all_results(list(resA, resB))
 
 # ===============================================================
 # 4) SUMMARY

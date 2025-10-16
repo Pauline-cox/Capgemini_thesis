@@ -20,6 +20,13 @@ feature_columns <- c(
   "lag_24", "lag_72", "lag_168", "rollmean_24", "rollmean_168"
 )
 
+feature_columns = c("total_occupancy", "humidity", "co2", "sound", "lux",
+                    "wind_speed", "sunshine_minutes", "global_radiation", "humidity_percent",
+                    "weekend", "business_hours", "hour_sin", "hour_cos",
+                    "dow_sin", "dow_cos", "month_cos",
+                    "lag_24", "lag_168", "rollmean_24",
+                    "holiday", "dst")
+
 # --- SARIMA ORDER SELECTION ---
 cat("Running SARIMA grid search")
 sarima_opt <- sarima_grid_search()
@@ -46,5 +53,3 @@ lstm_paramters_best <- lstm_opt$best_params
 cat("Hybrid result")
 print(hybrid_opt)
 hybrid_paramters_best <- lstm_opt$best_params
-
-

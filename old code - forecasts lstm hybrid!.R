@@ -3,7 +3,6 @@
 # ===============================================================
 
 # Assumes libraries are already loaded: keras, tensorflow, data.table, recipes, ggplot2, forecast, lubridate
-add saving forecasts and runtimes and also model fit
 
 # ===============================================================
 # 0) SETTINGS

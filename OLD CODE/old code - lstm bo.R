@@ -1,7 +1,7 @@
 # Function for LSTM hyperparameter tuning with Bayesian optimization 
 lstm_bayesopt_train <- function(train_data, val_data,
                                 feature_columns,
-                                HORIZON = 24,
+                                HORIZON = 1,
                                 verbose_trials = TRUE) {
   
   # Prepare train and validation set
@@ -100,31 +100,52 @@ lstm_bayesopt_train <- function(train_data, val_data,
     units2     = c(16, 64),
     dropout    = c(0.05, 0.4),
     lr         = c(1e-4, 5e-3),
-    lookback = c(96, 336), # 3 days / 1 week / 2 weeks
+    lookback   = c(96, 336), # 3 days to 2 weeks
     batch_size = c(16, 64),
     opt_id     = c(1, 3)
   )
   
   # Run optimization 
-  cat("Starting LSTM Bayesian optimization")
+  cat("Starting LSTM Bayesian optimization\n")
   start_time <- Sys.time()
   
-  opt_res <- bayesOpt(
-    FUN = bo_objective,
-    bounds = bounds,
-    initPoints = 10,
-    iters.n = 20,
-    acq = "ei",
-    verbose = 1
-  )
+  opt_res <- tryCatch({
+    bayesOpt(
+      FUN = bo_objective,
+      bounds = bounds,
+      initPoints = 10,
+      iters.n = 20,
+      acq = "ei",
+      verbose = 1
+    )
+  }, error = function(e) {
+    cat("Optimization failed:", conditionMessage(e), "\n")
+    return(NULL)
+  })
   
   total_time <- round(as.numeric(difftime(Sys.time(), start_time, units = "mins")), 2)
   cat("Optimization complete. Total optimization time:", total_time, "minutes\n\n")
   
-  best_pars  <- getBestPars(opt_res)
-  best_score <- getBestScore(opt_res)
+  # --- FIXED SAFE RESULT EXTRACTION (prevents getBestScore error) ---
+  best_pars  <- tryCatch(getBestPars(opt_res), error = function(e) NULL)
+  best_score <- tryCatch({
+    if (!is.null(opt_res) && !is.null(opt_res$scoreSummary)) {
+      min(opt_res$scoreSummary$Value, na.rm = TRUE)
+    } else {
+      NA
+    }
+  }, error = function(e) NA)
+  # ---------------------------------------------------------------
   
-  cat("Best parameters LSTM")
+  # --- SAVE CHECKPOINT ---
+  saveRDS(list(opt_results = opt_res,
+               best_params = best_pars,
+               best_score  = best_score,
+               runtime_min = total_time),
+          file = sprintf("LSTM_BayesOpt_%s.rds", format(Sys.time(), "%Y%m%d_%H%M")))
+  cat("Results saved to disk.\n")
+  
+  cat("Best parameters LSTM:\n")
   print(best_pars)
   cat("Best (negative) Val MAE:", best_score, "\n")
   

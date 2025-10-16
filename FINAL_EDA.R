@@ -3,7 +3,7 @@
 # --- Target Variable Exploration & Processing ---
 
 explore_target <- function() {
-
+  
   cat("Loaded Eneco data:", nrow(eneco_data), "rows\n")
   
   # Build full 15-min timeline
@@ -50,7 +50,7 @@ explore_target <- function() {
               aes(xmin = start, xmax = end, ymin = -Inf, ymax = Inf),
               inherit.aes = FALSE, fill = "black", alpha = 0.4) +
     geom_line(color = "skyblue3", alpha = 0.6) +
-    labs(title = "Energy Consumption with Missing/Zero Periods",
+    labs(
          x = "Datetime", y = "Consumption (kWh)") +
     theme_minimal() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1))
@@ -123,43 +123,143 @@ explore_target <- function() {
   energy_hourly[, weekday_en := wday(date, label = TRUE, abbr = FALSE,
                                      week_start = 1, locale = "C")]
   
+  # Filter from 1 July 2023 onward
+  energy_hourly_complete <- energy_hourly[interval >= as.POSIXct("2023-07-01 00:00:00", tz = "UTC")]
+  
   # Summary stats
-  cat("\nDescriptive statistics:\n")
-  print(psych::describe(as.data.frame(energy_hourly[, .(total_consumption_kWh)])))
+  cat("\nDescriptive statistics (after July 2023):\n")
+  print(psych::describe(as.data.frame(energy_hourly_complete[, .(total_consumption_kWh)])))
+  
+  # --- Seasonal decomposition ---
+  cat("\nSeasonal decomposition (trend, seasonality, residual):\n")
+  
+  ts_energy <- ts(energy_hourly_complete$total_consumption_kWh, frequency = 168)
+  decomp <- stl(ts_energy, s.window = "periodic")
+  plot(decomp, main = "Seasonal Decomposition of Hourly Energy Consumption")
+  
+  # --- Seasonal decomposition ---
+  cat("\nSeasonal decomposition (trend, seasonality, residual):\n")
+  
+  ts_energy <- ts(energy_hourly_complete$total_consumption_kWh, frequency = 168)
+  decomp <- stl(ts_energy, s.window = "periodic")
+  
+  # Create tidy data frame for plotting
+  decomp_df <- data.frame(
+    interval = energy_hourly_complete$interval,
+    Observed = energy_hourly_complete$total_consumption_kWh,
+    Trend = decomp$time.series[, "trend"],
+    Seasonal = decomp$time.series[, "seasonal"],
+    Remainder = decomp$time.series[, "remainder"]
+  )
+  
+  # Reshape for ggplot
+  decomp_long <- tidyr::pivot_longer(
+    decomp_df,
+    cols = c("Observed", "Trend", "Seasonal", "Remainder"),
+    names_to = "Component",
+    values_to = "Value"
+  )
+  
+  # Order panels so Observed appears first
+  decomp_long$Component <- factor(
+    decomp_long$Component,
+    levels = c("Observed", "Trend", "Seasonal", "Remainder")
+  )
+  
+  # Plot stacked facets with one shared x-axis
+  ggplot(decomp_long, aes(x = interval, y = Value)) +
+    geom_line(linewidth = 0.5, color = "black") +
+    facet_wrap(~ Component, ncol = 1, scales = "free_y", strip.position = "right") +
+    labs(
+      x = "Date", y = "kWh"
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(
+      strip.text = element_text(face = "bold"),
+      panel.spacing.y = unit(0.2, "lines"),
+      axis.title.x = element_text(margin = ggplot2::margin(t = 5)),
+      axis.title.y = element_text(margin = ggplot2::margin(r = 5)),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      panel.grid.minor = element_blank()
+    )
+  
   
   # Daily totals
-  daily_kWh <- energy_hourly[, .(daily_kWh = sum(total_consumption_kWh, na.rm = TRUE)), by = date]
+  daily_kWh <- energy_hourly_complete[, .(daily_kWh = sum(total_consumption_kWh, na.rm = TRUE)), by = date]
   daily_kWh[, month_str := format(date, "%Y-%m")]
   daily_kWh[, weekday_en := wday(date, label = TRUE, abbr = FALSE, week_start = 1, locale = "C")]
   
-  # Visualizations
-  print(ggplot(energy_hourly, aes(interval, total_consumption_kWh)) +
+  # Visualizations (only post-July 2023)
+  print(ggplot(energy_hourly_complete, aes(interval, total_consumption_kWh)) +
           geom_line(color = "#0072B2") +
-          labs(title = "Hourly Energy Consumption", x = "Datetime", y = "kWh") +
+          labs( x = "Datetime", y = "kWh") +
           theme_minimal())
   
   print(ggplot(daily_kWh, aes(date, daily_kWh)) +
           geom_line(color = "#E69F00") +
-          labs(title = "Daily Energy Consumption", x = "Date", y = "kWh") +
+          labs( x = "Date", y = "kWh") +
           theme_minimal())
   
   print(ggplot(daily_kWh, aes(weekday_en, daily_kWh)) +
           geom_boxplot(fill = "#E69F00") +
-          labs(title = "Daily Consumption by Weekday", x = NULL, y = "kWh") +
+          labs( x = NULL, y = "kWh") +
           theme_minimal())
   
-  print(ggplot(daily_kWh, aes(month_str, daily_kWh)) +
-          geom_boxplot(fill = "#56B4E9") +
-          labs(title = "Daily Consumption by Month", x = NULL, y = "kWh") +
-          theme_minimal() +
-          theme(axis.text.x = element_text(angle = 45, hjust = 1)))
+  # Create month index (1–12) and label
+  daily_kWh[, month_num := month(date)]
+  daily_kWh[, month_label := factor(month_num, 
+                                    levels = 1:12, 
+                                    labels = month.abb)]
   
-  print(ggplot(energy_hourly, aes(factor(hour), total_consumption_kWh)) +
+  print(
+    ggplot(daily_kWh, aes(x = month_label, y = daily_kWh)) +
+      geom_boxplot(fill = "#0072B2") +
+      labs(x = "Month", y = "kWh") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  )
+  
+  print(ggplot(energy_hourly_complete, aes(factor(hour), total_consumption_kWh)) +
           geom_boxplot(fill = "#009E73") +
-          labs(title = "Hourly Consumption by Hour of Day", x = "Hour", y = "kWh") +
+          labs( x = "Hour", y = "kWh") +
           theme_minimal())
   
-  return(energy_hourly)
+  # --- Subset test periods ---
+  oct_period <- energy_hourly_complete[
+    interval >= as.POSIXct("2024-10-01 00:00:00", tz = "UTC") &
+      interval <  as.POSIXct("2024-10-15 00:00:00", tz = "UTC")
+  ]
+  
+  dec_period <- energy_hourly_complete[
+    interval >= as.POSIXct("2024-12-17 00:00:00", tz = "UTC") &
+      interval <= as.POSIXct("2024-12-31 23:59:59", tz = "UTC")
+  ]
+  
+  # --- Plot for early October (black line) ---
+  p_oct <- ggplot(oct_period, aes(x = interval, y = total_consumption_kWh)) +
+    geom_line(color = "black", linewidth = 0.5) +
+    labs(x = "Datetime", y = "kWh") +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      panel.grid.minor = element_blank()
+    )
+  
+  # --- Plot for late December (black line) ---
+  p_dec <- ggplot(dec_period, aes(x = interval, y = total_consumption_kWh)) +
+    geom_line(color = "black", linewidth = 0.5) +
+    labs(x = "Datetime", y = "kWh") +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      panel.grid.minor = element_blank()
+    )
+  
+  # --- Display separately ---
+  print(p_oct)
+  print(p_dec)
+  
+  return(energy_hourly_complete)
 }
 
 
@@ -169,16 +269,25 @@ explore_full_data <- function() {
   
   # Filter to 2023-2024
   processed_data <- as.data.table(raw_data)[!is.na(interval)] %>%
-    filter(interval >= as.POSIXct("2023-01-01 00:00:00", tz = "UTC"),
+    filter(interval >= as.POSIXct("2023-01-07 00:00:00", tz = "UTC"),
            interval <  as.POSIXct("2025-01-01 00:00:00", tz = "UTC"))
   
+  # --- FIX: Scale KNMI temperature from 1/10 °C to °C ---
+  if ("temperature" %in% names(processed_data)) {
+    processed_data[, temperature := temperature / 10]
+    cat("Converted KNMI temperature from 1/10 °C to °C scale\n")
+  }
+
   numeric_cols <- names(processed_data)[sapply(processed_data, is.numeric)]
   
-  # Descriptive stats before preprocessing (with original uncleaned target)
   cat("\nDescriptive statistics (before preprocessing):\n")
   summary_before <- psych::describe(as.data.frame(processed_data[, ..numeric_cols]))
-  print(round(summary_before[, c("mean","sd","median","min","max")], 2))
-  
+  print(
+    round(
+      summary_before[, c("mean", "sd", "median", "min", "max", "skew", "kurtosis")],
+      2
+    )
+  )
   # Replace target with cleaned version from explore_target
   processed_data[, total_consumption_kWh := eneco_data_processed[.SD, on = "interval", total_consumption_kWh]]
   
@@ -213,7 +322,7 @@ explore_full_data <- function() {
                  aes(x = interval, y = Value),
                  color = "red", size = 0.8, na.rm = TRUE) +
       facet_wrap(~ Variable, scales = "free_y", ncol = 3) +
-      labs(title = "Time Series with Outliers (Before Capping)") +
+      labs() +
       theme_minimal()
   )
   
@@ -262,24 +371,43 @@ explore_full_data <- function() {
     processed_data[sound < sound_lower, sound := sound_lower]
   }
   
-  # Descriptive stats after preprocessing
+  
   cat("\nDescriptive statistics (after preprocessing):\n")
   summary_after <- psych::describe(as.data.frame(processed_data[, ..numeric_cols]))
-  print(round(summary_after[, c("mean","sd","median","min","max")], 2))
+  print(
+    round(
+      summary_after[, c("mean", "sd", "median", "min", "max", "skew", "kurtosis")],
+      2
+    )
+  )
   
   # Correlation analysis
   cor_matrix <- cor(processed_data[, ..numeric_cols], use = "pairwise.complete.obs")
   cor_dt <- as.data.table(as.table(cor_matrix))
   setnames(cor_dt, old = names(cor_dt), new = c("Var1", "Var2", "Correlation"))
   
+  var_order <- colnames(processed_data[, ..numeric_cols])
+  # total energy consumption first
+  var_order <- c("total_consumption_kWh", setdiff(var_order, "total_consumption_kWh"))
+  
+  cor_dt[, Var1 := factor(Var1, levels = var_order)]
+  cor_dt[, Var2 := factor(Var2, levels = rev(var_order))]  # reverse for heatmap orientation
+  
+  # Plot
   print(
     ggplot(cor_dt, aes(x = Var1, y = Var2, fill = Correlation)) +
       geom_tile(color = "white") +
       scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
-      labs(title = "Correlation Heatmap") +
+      labs(fill = "Correlation") +
       theme_minimal() +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+      theme(
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid = element_blank()
+      )
   )
+  
   
   # Correlation with energy
   non_binary_vars <- setdiff(non_binary_vars, "total_consumption_kWh")
@@ -307,28 +435,28 @@ explore_full_data <- function() {
   
   print(
     ggplot(plot_dt, aes(interval, Value)) +
-      geom_line(linewidth = 0.25, color = "skyblue3", na.rm = TRUE) +
+      geom_line(linewidth = 0.25, color = "#0072B2", na.rm = TRUE) +
       facet_wrap(~ Variable, scales = "free_y", ncol = 3) +
-      labs(title = "Explanatory Variables Over Time") +
+      labs() +
       theme_minimal()
   )
   
-  # Scatter plots
-  scatter_dt <- melt(
-    processed_data,
-    id.vars = "total_consumption_kWh",
-    measure.vars = non_binary_vars,
-    variable.name = "Variable", value.name = "Value"
-  )
-  
-  print(
-    ggplot(scatter_dt, aes(x = Value, y = total_consumption_kWh)) +
-      geom_point(alpha = 0.3, size = 0.6, color = "steelblue") +
-      geom_smooth(method = "lm", se = FALSE, color = "red", linewidth = 0.5) +
-      facet_wrap(~ Variable, scales = "free_x", ncol = 3) +
-      labs(title = "Energy vs Explanatory Variables", y = "Energy (kWh)") +
-      theme_minimal()
-  )
+  # # Scatter plots
+  # scatter_dt <- melt(
+  #   processed_data,
+  #   id.vars = "total_consumption_kWh",
+  #   measure.vars = non_binary_vars,
+  #   variable.name = "Variable", value.name = "Value"
+  # )
+  # 
+  # print(
+  #   ggplot(scatter_dt, aes(x = Value, y = total_consumption_kWh)) +
+  #     geom_point(alpha = 0.3, size = 0.6, color = "steelblue") +
+  #     geom_smooth(method = "lm", se = FALSE, color = "red", linewidth = 0.5) +
+  #     facet_wrap(~ Variable, scales = "free_x", ncol = 3) +
+  #     labs(title = "Energy vs Explanatory Variables", y = "Energy (kWh)") +
+  #     theme_minimal()
+  # )
   
   return(processed_data)
 }

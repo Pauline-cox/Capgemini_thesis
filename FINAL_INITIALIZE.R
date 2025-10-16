@@ -1,5 +1,9 @@
 # Environment Initialization
 
+# color pallet 
+# colors <- c("#0072B2", "#E69F00", "#009E73", "#CC79A7", 
+#             "#F0E442", "#56B4E9", "#D55E00")
+
 initialize_environment <- function() {
   
   # Python version
@@ -13,7 +17,7 @@ initialize_environment <- function() {
     "lubridate", "furrr", "future", "corrplot", "ggplot2", "forecast", "urca",
     "randomForest", "caret", "recipes", "Metrics", "xgboost", "zoo", "purrr", "ranger",
     "SHAPforxgboost", "reshape2", "psych", "viridis", "Amelia", "VIM", "tsibble", "car", 
-    "parBayesianOptimization"
+    "ParBayesianOptimization", "gridExtra", "stats", "rBayesianOptimization"
   )
   
   new_packages <- packages[!(packages %in% installed.packages()[, "Package"])]
