@@ -1,6 +1,0 @@
-source("FINAL_FC_SARIMAX_RAW.R")
-source("FINAL_FC_SARIMAX_PCA.R")
-source("FINAL_FC_SARIMAX_CLUSTER.R")
-
-
-source("FINAL_HYBRID_BO")
