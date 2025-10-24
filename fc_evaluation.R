@@ -405,8 +405,8 @@ perform_dm_test <- function(actual, forecast1, forecast2,
   e1 <- actual - forecast1
   e2 <- actual - forecast2
   
-  # Perform DM test (default uses squared error loss)
-  dm_result <- dm.test(e1, e2, alternative = alternative, h = h)
+  # Perform DM test with squared error loss
+  dm_result <- dm.test(e1, e2, alternative = alternative, h = h, loss)
   
   return(dm_result)
 }

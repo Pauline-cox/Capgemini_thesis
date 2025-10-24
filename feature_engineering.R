@@ -23,16 +23,11 @@ add_engineered_features <- function(dt) {
   
   # Lags
   dt[, lag_24 := shift(total_consumption_kWh, 24)] # 1 day
-  dt[, lag_48 := shift(total_consumption_kWh, 48)] # 2 days
-  dt[, lag_72 := shift(total_consumption_kWh, 72)] # 3 days
   dt[, lag_168 := shift(total_consumption_kWh, 168)] # 1 week
-  dt[, lag_336 := shift(total_consumption_kWh, 336)] # 2 weeks
-  dt[, lag_504 := shift(total_consumption_kWh, 504)] # 3 weeks
-  
+
   # Long rolling means
   dt[, rollmean_24 := shift(frollmean(total_consumption_kWh, n = 24, align = "right", fill = NA), 1)]
-  dt[, rollmean_168 := shift(frollmean(total_consumption_kWh, n = 168, align = "right", fill = NA), 1)]
-  
+
   # Holidays (Netherlands + school + bridge days)
   nl_holidays <- as.Date(c(
     "2023-01-01", "2023-04-07", "2023-04-09", "2023-04-10", "2023-04-27",

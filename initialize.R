@@ -18,7 +18,7 @@ initialize_environment <- function() {
     "randomForest", "caret", "recipes", "Metrics", "xgboost", "zoo", "purrr", "ranger",
     "SHAPforxgboost", "reshape2", "psych", "viridis", "Amelia", "VIM", "tsibble", "car", 
     "ParBayesianOptimization", "gridExtra", "stats", "rBayesianOptimization",
-    "ggpubr", "patchwork", "grid", "knitr"
+    "ggpubr", "patchwork", "grid", "knitr", "nortest", "e1071", "RColorBrewer"
   )
   
   new_packages <- packages[!(packages %in% installed.packages()[, "Package"])]
