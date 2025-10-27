@@ -1,4 +1,20 @@
-# Data Loading Functions
+# ==============================================================
+# Author: Pauline Cox
+# Script: load_data.R
+#
+# Description: Function to load and combine all raw data sources
+# The script harmonizes timestamps, aggregates to hourly resolution,
+# and merges all datasets into a single unified table for modeling.
+#
+# Input: 
+#   - Data/Eneco/*.xlsx (energy consumption)
+#   - Data/Sensor data/NL-UTC-UTRECHTLR/*.csv (raw sensor data)
+#   - Data/Sensor data/selection_NL-UTC/*.csv (active sensors)
+#   - Data/KNMI.txt (hourly weather data)
+#
+# Output: Combined hourly dataset containing energy consumption, 
+# occupancy, comfort, and weather features.
+# ==============================================================
 
 # --- Load Eneco energy consumption data ---
 
@@ -11,7 +27,6 @@ load_eneco_data <- function() {
   
   return(eneco_data)
 }
-
 
 # --- Load sensor data (occupancy + comfort) ---
 
@@ -178,7 +193,6 @@ load_sensor_data <- function() {
   return(sensor_data)
 }
 
-
 # --- Load KNMI weather data ---
 
 load_knmi_data <- function() {
@@ -210,8 +224,6 @@ load_knmi_data <- function() {
   return(KNMI_data)
 }
 
-
-
 # --- Combine all datasets ---
 
 combine_data <- function() {
@@ -242,8 +254,7 @@ combine_data <- function() {
   return(processed_data)
 }
 
-
-# --- Optional: Load all data at once ---
+# --- Function to load all data at once ---
 
 load_all_data <- function() {
   

@@ -1,15 +1,22 @@
-# Environment Initialization
-
-# color pallet 
-# colors <- c("#0072B2", "#E69F00", "#009E73", "#CC79A7", 
-#             "#F0E442", "#56B4E9", "#D55E00")
+# ==============================================================
+# Author: Pauline Cox
+# Script: initialize.R
+#
+# Description: Configures the computational environment for the energy forecasting
+# project. Installs and loads required R and Python packages, sets 
+# random seeds for reproducibility, and defines utility functions.
+#
+# Input: None 
+#
+# Output: Loaded libraries and configured environment for subsequent scripts.
+# ==============================================================
 
 initialize_environment <- function() {
   
   # Python version
   message("Configuring Python environment...")
   library(reticulate)
-  use_python("C:/Users/pauli/AppData/Local/Programs/Python/Python310/python.exe", required = TRUE)
+  # use_python("C:/Users/pauli/AppData/Local/Programs/Python/Python310/python.exe", required = TRUE)
   
   # Install required R packages
   packages <- c(
@@ -18,7 +25,7 @@ initialize_environment <- function() {
     "randomForest", "caret", "recipes", "Metrics", "xgboost", "zoo", "purrr", "ranger",
     "SHAPforxgboost", "reshape2", "psych", "viridis", "Amelia", "VIM", "tsibble", "car", 
     "ParBayesianOptimization", "gridExtra", "stats", "rBayesianOptimization",
-    "ggpubr", "patchwork", "grid", "knitr", "nortest", "e1071", "RColorBrewer"
+    "ggpubr", "patchwork", "grid", "knitr", "nortest", "e1071", "RColorBrewer", "cluster"
   )
   
   new_packages <- packages[!(packages %in% installed.packages()[, "Package"])]
@@ -33,7 +40,7 @@ initialize_environment <- function() {
     ))
   }
   
-  # Load tensorflow and verify
+  # Load tensorflow
   library(tensorflow)
   library(keras)
   
@@ -41,4 +48,8 @@ initialize_environment <- function() {
   if (!exists("%||%", mode = "function")) {
     `%||%` <<- function(a, b) if (!is.null(a)) a else b
   }
+  
+  # Set seed
+  set.seed(1234)
+  tensorflow::set_random_seed(1234)
 }

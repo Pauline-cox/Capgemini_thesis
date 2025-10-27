@@ -1,7 +1,20 @@
-# ---------------------------------------------------------------
-# MODEL: SARIMAX (Raw Exogenous Variables)
-# 24-hour rolling forecast without retraining
-# ---------------------------------------------------------------
+# ==============================================================
+# Author: Pauline Cox
+# Script: fc_sarimax.R
+#
+# Description: Implements a SARIMAX model using raw exogenous 
+# variables for 24-hour rolling energy consumption forecasts. 
+# The model is trained once per period and generates sequential
+# forecasts across two evaluation periods (A and B) without retraining.
+#
+# Input: 
+#   - Preprocessed and feature-engineered dataset (model_data)
+#   - Functions from forecast_preparations.R
+#   - Selected features
+#
+# Output: 
+#   - Forecast results, evaluation metrics and diagnostic plots
+# ==============================================================
 
 set.seed(1234)
 
@@ -31,18 +44,20 @@ rolling_sarimax_24h <- function(train_data, test_data, order, seasonal, period, 
   scale_vec  <- attr(x_train_scaled, "scaled:scale")
   
   y_train_ts <- ts(y_train, frequency = period)
-  model <- Arima(y_train_ts,
-                 order = order,
-                 seasonal = list(order = seasonal, period = period),
-                 xreg = x_train_scaled,
-                 method = "CSS-ML")
+  model <- Arima(
+    y_train_ts,
+    order = order,
+    seasonal = list(order = seasonal, period = period),
+    xreg = x_train_scaled,
+    method = "CSS-ML"
+  )
   
   train_time <- as.numeric(difftime(Sys.time(), train_start, units = "mins"))
-  cat(sprintf("Trained SARIMAX: %d features | AIC=%.2f | Time=%.2fmin\n",
+  cat(sprintf("Trained SARIMAX: %d features | AIC=%.2f | Time=%.2f min\n",
               length(xreg_vars), model$aic, train_time))
   print(summary(model))
   
-  # --- Rolling 24-hour forecasts ---
+  # --- Rolling forecasts ---
   predict_start <- Sys.time()
   all_y <- c(y_train, test_data[[target_col]])
   all_x <- rbind(x_train, as.matrix(test_data[, ..xreg_vars]))
@@ -65,9 +80,10 @@ rolling_sarimax_24h <- function(train_data, test_data, order, seasonal, period, 
       error = function(e) NULL
     )
     if (is.null(updated)) next
-    fc <- forecast(updated, xreg = future_x, h = 24)
     
+    fc <- forecast(updated, xreg = future_x, h = 24)
     idx <- current_idx + 24 - n_train
+    
     if (idx >= 1 && idx <= n_test) {
       forecasts[idx] <- fc$mean[24]
       filled <- filled + 1
@@ -95,7 +111,7 @@ rolling_sarimax_24h <- function(train_data, test_data, order, seasonal, period, 
   
   list(
     forecasts = forecasts,
-    model = model, 
+    model = model,
     runtime = total_time,
     train_time = train_time,
     predict_time = predict_time
@@ -110,20 +126,23 @@ run_sarimax_raw <- function(train, test, label) {
   actual <- test[[target_col]]
   
   eval <- evaluate_forecast(actual, res$forecasts, "SARIMAX_Raw_24h")
-  eval[, `:=`(Runtime_min = res$runtime,
-              Train_min = res$train_time,
-              Predict_min = res$predict_time,
-              Period = label)]
+  eval[, `:=`(
+    Runtime_min = res$runtime,
+    Train_min = res$train_time,
+    Predict_min = res$predict_time,
+    Period = label
+  )]
   
   dt <- data.table(Time = seq_along(actual), Actual = actual, Forecast = res$forecasts)
   p <- plot_forecast(dt, "SARIMAX_Raw_24h", label, color = "red")
   print(p)
   
+  # --- Return results ---
   list(
     eval = eval,
     forecasts = dt,
     plot = p,
-    model = res$model   
+    model = res$model
   )
 }
 
@@ -138,7 +157,6 @@ print(all_eval_sarimax_raw)
 
 # --- Print results ---
 
-cat("\n--- Summary ---\n")
 cat(sprintf("Model: %s\n", resultsA_sarimax_raw$eval$Model[1]))
 
 cat(sprintf(
@@ -163,7 +181,7 @@ cat(sprintf(
   resultsB_sarimax_raw$eval$Predict_min
 ))
 
-# --- Save results under model-specific name ---
+# --- Save results  ---
 
 timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
 save_name <- sprintf("Results_SARIMAX_Raw_24h_%s.rds", timestamp)
@@ -171,8 +189,8 @@ save_name <- sprintf("Results_SARIMAX_Raw_24h_%s.rds", timestamp)
 saveRDS(
   list(
     model = "SARIMAX_Raw_24h",
-    period_A = resultsA_sarimax_raw, 
-    period_B = resultsB_sarimax_raw,  
+    period_A = resultsA_sarimax_raw,
+    period_B = resultsB_sarimax_raw,
     evaluations = all_eval_sarimax_raw,
     parameters = list(
       order = ORDER,
@@ -184,5 +202,4 @@ saveRDS(
   file = save_name
 )
 
-cat(sprintf("\nResults and trained models saved to: %s\n", save_name))
-cat("SARIMAX (Raw) 24-hour forecast complete!\n")
+cat(sprintf("\nResults and models saved to: %s\n", save_name))

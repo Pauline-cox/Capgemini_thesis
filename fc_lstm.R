@@ -1,11 +1,25 @@
-# ===============================================================
-# MODEL: LSTM (Pure 24-Hour-Ahead Direct Forecast)
-# ===============================================================
+# ==============================================================
+# Author: Pauline Cox
+# Script: fc_lstm_pure24.R
+#
+# Description: Implements an LSTM model for 24-hour-ahead direct 
+# energy consumption forecasting. The model uses preprocessed and 
+# feature-engineered inputs, is trained once per period, and generates 
+# sequential forecasts for evaluation periods A and B.
+#
+# Input: 
+#   - Preprocessed and feature-engineered dataset (model_data)
+#   - Functions from forecast_preparations.R
+#   - Optimal hyperparamaters from bayesian optimzation
+#
+# Output: 
+#   - Forecast results, evaluation metrics and diagnostic plots
+# ==============================================================
 
 set.seed(1234)
 tensorflow::set_random_seed(1234)
 
-# --- Hyperparameters (Bayesian Optimization Results) ---
+# --- Hyperparameters (BOA results) ---
 LOOKBACK <- 168L
 UNITS1   <- 130
 UNITS2   <- 32
@@ -25,6 +39,7 @@ feature_columns <- c(
 )
 
 # --- Build LSTM model ---
+
 build_lstm_model <- function(input_shape, units1, units2, dropout, lr) {
   keras_model_sequential() %>%
     layer_lstm(units = units1, input_shape = input_shape, return_sequences = TRUE) %>%
@@ -39,6 +54,7 @@ build_lstm_model <- function(input_shape, units1, units2, dropout, lr) {
 }
 
 # --- Plot training convergence ---
+
 plot_convergence <- function(history, title = "LSTM Training Convergence") {
   df <- data.frame(
     epoch = seq_along(history$metrics$loss),
@@ -54,10 +70,11 @@ plot_convergence <- function(history, title = "LSTM Training Convergence") {
 }
 
 # --- 24h ahead LSTM forecast ---
+
 lstm_pure_24h_only <- function(train_data, test_data, feature_cols,
                                lookback, units1, units2, dropout, lr,
                                batch_size, epochs, horizon = 24) {
-  cat("\n>>> Starting LSTM PURE 24-Hour-Ahead Forecast (Min–Max Scaled) <<<\n")
+  cat("\n--- LSTM PURE 24-Hour-Ahead Forecast ---\n")
   
   overall_start <- Sys.time()
   train_y <- train_data[[target_col]]
@@ -73,7 +90,7 @@ lstm_pure_24h_only <- function(train_data, test_data, feature_cols,
   x_max <- apply(train_x, 2, max, na.rm = TRUE)
   x_scaled <- sweep(all_x, 2, x_min, "-")
   x_scaled <- sweep(x_scaled, 2, (x_max - x_min + 1e-6), "/")
-  x_scaled <- pmax(pmin(x_scaled, 1), 0)  # ensure bounds [0,1]
+  x_scaled <- pmax(pmin(x_scaled, 1), 0)
   
   y_min <- min(train_y, na.rm = TRUE)
   y_max <- max(train_y, na.rm = TRUE)
@@ -110,7 +127,7 @@ lstm_pure_24h_only <- function(train_data, test_data, feature_cols,
   cat(sprintf("Training complete in %.2f min\n", train_time))
   
   # --- Plot convergence ---
-  p_conv <- plot_convergence(history, "LSTM Pure 24h Training Convergence (Min–Max)")
+  p_conv <- plot_convergence(history, "LSTM Pure 24h Training Convergence")
   print(p_conv)
   
   # --- Forecast generation ---
@@ -130,7 +147,7 @@ lstm_pure_24h_only <- function(train_data, test_data, feature_cols,
       x_scaled[idx + horizon, , drop = FALSE]
     )
     pred <- predict(model, array(X_pred, dim = c(1, lookback + 1, ncol(x_scaled))), verbose = 0)
-    y_pred <- pred[1] * (y_max - y_min + 1e-6) + y_min  # reverse scaling
+    y_pred <- pred[1] * (y_max - y_min + 1e-6) + y_min
     target_idx <- idx - n_train + horizon
     if (target_idx >= 1 && target_idx <= n_test) {
       forecasts[target_idx] <- y_pred
@@ -162,10 +179,13 @@ lstm_pure_24h_only <- function(train_data, test_data, feature_cols,
 }
 
 # --- Runner for each period ---
+
 run_lstm_pure24 <- function(train, test, label) {
+  cat(sprintf("\n--- %s ---\n", label))
   res <- lstm_pure_24h_only(train, test, feature_columns, LOOKBACK, UNITS1, UNITS2,
                             DROPOUT, LR, BATCH, EPOCHS, HORIZON)
   actual <- test[[target_col]]
+  
   eval <- evaluate_forecast(actual, res$forecasts, "LSTM_Pure_24h")
   eval[, `:=`(Runtime_min = res$runtime, Train_min = res$train_time, Period = label)]
   
@@ -175,20 +195,24 @@ run_lstm_pure24 <- function(train, test, label) {
   print(p_forecast)
   print(res$convergence_plot)
   
-  list(eval = eval, forecasts = dt, plot_forecast = p_forecast,
-       plot_convergence = res$convergence_plot, history = res$history)
+  list(
+    eval = eval,
+    forecasts = dt,
+    plot_forecast = p_forecast,
+    plot_convergence = res$convergence_plot,
+    history = res$history
+  )
 }
 
 # --- Execution ---
-splits <- split_periods(model_data)
 
-resultsA_lstm <- run_lstm_pure24(splits$trainA, splits$testA, "Period A (Stable)")
-resultsB_lstm <- run_lstm_pure24(splits$trainB, splits$testB, "Period B (Not Stable)")
+splits <- split_periods(model_data)
+resultsA_lstm <- run_lstm_pure24(splits$trainA, splits$testA, "Period A")
+resultsB_lstm <- run_lstm_pure24(splits$trainB, splits$testB, "Period B")
 
 all_eval_lstm <- rbind(resultsA_lstm$eval, resultsB_lstm$eval)
 print(all_eval_lstm)
 
-cat("\n--- Summary ---\n")
 cat(sprintf("Model: %s\n", resultsA_lstm$eval$Model[1]))
 cat(sprintf(
   "Period A: RMSE=%.2f | MAE=%.2f | MAPE=%.2f%% | R2=%.4f | Time=%.2fmin\n",
@@ -228,5 +252,4 @@ saveRDS(
   file = save_name
 )
 
-cat(sprintf("\nResults (including histories) saved to: %s\n", save_name))
-cat("LSTM (Pure 24h) forecast complete!\n")
+cat(sprintf("\nResults and models saved to: %s\n", save_name))

@@ -1,7 +1,19 @@
-# ---------------------------------------------------------------
-# MODEL: SARIMA (No Exogenous Variables)
-# 24-hour rolling forecast without retraining
-# ---------------------------------------------------------------
+# ==============================================================
+# Author: Pauline Cox
+# Script: fc_sarima.R
+#
+# Description: Implements a baseline SARIMA model for 24-hour rolling 
+# energy consumption forecasts. 
+# The model is trained once per period and generates sequential
+# forecasts across two evaluation periods (A and B) without retraining.
+#
+# Input: 
+#   - Preprocessed and feature-engineered dataset (model_data)
+#   - Functions from forecast_preparations.R
+#
+# Output: 
+#   - Forecast results, evaluation metrics and diagnostic plots
+# ==============================================================
 
 set.seed(1234)
 
@@ -68,7 +80,7 @@ rolling_sarima_24h <- function(train_data, test_data, order, seasonal, period) {
   
   list(
     forecasts = forecasts,
-    model = model,  # --- keep the fitted SARIMA model
+    model = model,  
     runtime = total_time,
     train_time = train_time,
     predict_time = predict_time
@@ -92,7 +104,7 @@ run_sarima <- function(train, test, label) {
   p <- plot_forecast(dt, "SARIMA_24h", label, color = "blue")
   print(p)
   
-  # --- Return full result bundle including model ---
+  # --- Return results ---
   list(
     eval = eval,
     forecasts = dt,
@@ -112,7 +124,6 @@ print(all_eval_sarima)
 
 # --- Print results ---
 
-cat("\n--- Summary ---\n")
 cat(sprintf("Model: %s\n", resultsA_sarima$eval$Model[1]))
 
 cat(sprintf(
@@ -137,7 +148,7 @@ cat(sprintf(
   resultsB_sarima$eval$Predict_min
 ))
 
-# --- Save results (including trained models) ---
+# --- Save results  ---
 
 timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
 save_name <- sprintf("Results_SARIMA_24h_%s.rds", timestamp)
@@ -158,4 +169,3 @@ saveRDS(
 )
 
 cat(sprintf("\nResults and models saved to: %s\n", save_name))
-cat("SARIMA 24-hour forecast complete!\n")
