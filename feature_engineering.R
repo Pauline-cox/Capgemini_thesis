@@ -1,4 +1,18 @@
-# Function to add engeneerged features to the dataset
+# ==============================================================
+# Author: Pauline Cox
+# Script: feature_engineering.R
+#
+# Description: Adds engineered temporal and calendar-based features to the
+# cleaned dataset to enhance model performance. This includes time-based 
+# variables (hour, weekday, month), cyclical encodings, lag features, 
+# rolling means, holiday indicators, and daylight saving time flags.
+#
+# Input: 
+#   - Cleaned and preprocessed dataset 
+#
+# Output: 
+#   - Feature-augmented dataset ready for model training.
+# ==============================================================
 
 add_engineered_features <- function(dt) {
   dt <- copy(dt)
@@ -54,7 +68,7 @@ add_engineered_features <- function(dt) {
   dt[, date := as.Date(interval)]
   dt[, holiday := as.integer(date %in% all_holidays)]
   
-  # Daylight Saving Time indicator (DST)
+  # DST indicator
   dt[, dst := as.integer(dst(interval))]
   
   # Remove rows with any NA (from lags or rolling means)

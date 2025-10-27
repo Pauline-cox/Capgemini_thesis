@@ -1,4 +1,20 @@
-# Data Exploration & Preprocessing
+# ==============================================================
+# Author: Pauline Cox
+# Script: eda.R
+#
+# Description: Performs exploratory data analysis and preprocessing
+# for the Eneco energy consumption dataset and merged feature set. 
+# Includes anomaly detection, missing value handling, interpolation, 
+# outlier detection, winsorization, correlation analysis, and visualization.
+#
+# Input: 
+#   - Raw Eneco energy data 
+#   - Combined raw dataset 
+#
+# Output: 
+#   - Cleaned and aggregated energy consumption data (energy_hourly_complete)
+#   - Preprocessed, feature-complete dataset (processed_data)
+# ==============================================================s
 
 # --- Target Variable Exploration & Processing ---
 
@@ -130,7 +146,7 @@ explore_target <- function() {
   cat("\nDescriptive statistics (after July 2023):\n")
   print(psych::describe(as.data.frame(energy_hourly_complete[, .(total_consumption_kWh)])))
   
-  # --- Seasonal decomposition ---
+  # Seasonal decomposition 
   cat("\nSeasonal decomposition (trend, seasonality, residual):\n")
   
   ts_energy <- ts(energy_hourly_complete$total_consumption_kWh, frequency = 168)
@@ -433,23 +449,6 @@ explore_full_data <- function() {
       labs() +
       theme_minimal()
   )
-  
-  # # Scatter plots
-  # scatter_dt <- melt(
-  #   processed_data,
-  #   id.vars = "total_consumption_kWh",
-  #   measure.vars = non_binary_vars,
-  #   variable.name = "Variable", value.name = "Value"
-  # )
-  # 
-  # print(
-  #   ggplot(scatter_dt, aes(x = Value, y = total_consumption_kWh)) +
-  #     geom_point(alpha = 0.3, size = 0.6, color = "steelblue") +
-  #     geom_smooth(method = "lm", se = FALSE, color = "red", linewidth = 0.5) +
-  #     facet_wrap(~ Variable, scales = "free_x", ncol = 3) +
-  #     labs(title = "Energy vs Explanatory Variables", y = "Energy (kWh)") +
-  #     theme_minimal()
-  # )
-  
+
   return(processed_data)
 }

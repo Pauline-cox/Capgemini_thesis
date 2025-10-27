@@ -1,21 +1,31 @@
-# ---------------------------------------------------------------
-# MODEL: SARIMAX (PCA Exogenous, Outdoor-only)
-# 24-hour rolling forecast without retraining
-# ---------------------------------------------------------------
-
-library(data.table)
-library(forecast)
+# ==============================================================
+# Author: Pauline Cox
+# Script: fc_sarimax_pca.R
+#
+# Description: Implements a SARIMAX model using PCA-reduced outdoor 
+# environmental features, combined with occupancy and temporal variables, 
+# for 24-hour rolling energy consumption forecasts. 
+# The model is trained once per period and forecasts sequentially for 
+# both evaluation periods (A and B) without retraining.
+#
+# Input: 
+#   - Preprocessed and feature-engineered dataset (model_data)
+#   - Functions from forecast_preparations.R
+#
+# Output: 
+#   - Forecast results, evaluation metrics and diagnostic plots
+# ==============================================================
 
 set.seed(1234)
 
 # --- Settings ---
-PCA_VAR_THRESHOLD <- 0.90
-env_outdoor <- c(
-  "temperature","wind_speed","sunshine_minutes",
-  "global_radiation","humidity_percent","fog","rain","snow","thunder","ice"
-)
+PCA_VAR_THRESHOLD <- 0.75
+env_outdoor <- c("temperature","wind_speed","sunshine_minutes",
+                 "global_radiation","humidity_percent",
+                 "fog","rain","snow","thunder","ice",
+                 "lux", "co2", "tempC", "humidity", "sound")
 temporal_vars <- c("business_hours","hour_sin","hour_cos","dow_cos","holiday","dst")
-occ_var <- "total_occupancy"   # single name as requested
+occ_var <- "total_occupancy"
 
 # --- PCA Feature Extraction (OUTDOOR + occupancy + temporal) ---
 extract_pca_features_outdoor <- function(train_data, test_data, var_threshold = PCA_VAR_THRESHOLD) {
@@ -26,7 +36,7 @@ extract_pca_features_outdoor <- function(train_data, test_data, var_threshold = 
   X_train <- as.matrix(train_data[, ..avail_env])
   X_test  <- as.matrix(test_data[,  ..avail_env])
   
-  # impute with train means
+  # Impute missing values with training means
   for (j in seq_len(ncol(X_train))) {
     mu <- mean(X_train[, j], na.rm = TRUE)
     X_train[is.na(X_train[, j]), j] <- mu
@@ -46,11 +56,11 @@ extract_pca_features_outdoor <- function(train_data, test_data, var_threshold = 
   colnames(train_pcs) <- paste0("PC", 1:n_comp)
   colnames(test_pcs)  <- paste0("PC", 1:n_comp)
   
-  # bind occupancy + temporal
+  # Bind occupancy and temporal features
   extras_train <- cbind(train_data[, ..occ_var], train_data[, ..avail_temp])
   extras_test  <- cbind(test_data[,  ..occ_var], test_data[,  ..avail_temp])
   
-  # simple NA guards
+  # Handle missing values
   if (anyNA(extras_train[[occ_var]])) {
     mu_occ <- mean(extras_train[[occ_var]], na.rm = TRUE)
     extras_train[[occ_var]][is.na(extras_train[[occ_var]])] <- mu_occ
@@ -104,14 +114,14 @@ rolling_sarimax_pca_24h <- function(train_data, test_data, order, seasonal, peri
   
   train_time <- as.numeric(difftime(Sys.time(), train_start, units = "mins"))
   cat(sprintf(
-    "Trained SARIMAX-PCA: %d PCs (+%d extras) | AIC=%.2f | Time=%.2fmin\n",
+    "Trained SARIMAX-PCA: %d PCs (+%d extras) | AIC=%.2f | Time=%.2f min\n",
     pca_obj$n_comp, ncol(pca_obj$train) - pca_obj$n_comp, model$aic, train_time
   ))
   cat(sprintf("PCA specifics: PCs=%d | CumVar=%.2f%% | EnvVars={%s}\n",
               pca_obj$n_comp, 100*pca_obj$var_explained, paste(pca_obj$avail_env, collapse=", ")))
   print(summary(model))
   
-  # --- Rolling 24-hour forecasts ---
+  # --- Rolling forecasts ---
   predict_start <- Sys.time()
   all_y <- c(y_train, test_data[[target_col]])
   all_x <- rbind(x_train, as.matrix(pca_obj$test))
@@ -137,7 +147,10 @@ rolling_sarimax_pca_24h <- function(train_data, test_data, order, seasonal, peri
     
     fc <- forecast(updated, xreg = future_x, h = 24)
     idx <- current_idx + 24 - n_train
-    if (idx >= 1 && idx <= n_test) { forecasts[idx] <- fc$mean[24]; filled <- filled + 1 }
+    if (idx >= 1 && idx <= n_test) {
+      forecasts[idx] <- fc$mean[24]
+      filled <- filled + 1
+    }
     
     if (filled %% 24 == 0 || filled == n_test) {
       elapsed <- as.numeric(difftime(Sys.time(), predict_start, units = "mins"))
@@ -152,7 +165,7 @@ rolling_sarimax_pca_24h <- function(train_data, test_data, order, seasonal, peri
   predict_time <- as.numeric(difftime(Sys.time(), predict_start, units = "mins"))
   total_time <- as.numeric(difftime(Sys.time(), overall_start, units = "mins"))
   
-  # Fill NAs
+  # Fill missing forecast values
   for (i in which(is.na(forecasts))) {
     forecasts[i] <- ifelse(i == 1, tail(y_train, 1), forecasts[i - 1])
   }
@@ -168,26 +181,24 @@ rolling_sarimax_pca_24h <- function(train_data, test_data, order, seasonal, peri
 }
 
 # --- Runner for both periods ---
-cat(sprintf("\n--- %s [SARIMAX_PCA_OUT] ---\n", label))
-res <- rolling_sarimax_pca_24h(train, test, ORDER, SEASONAL, PERIOD)
 run_sarimax_pca_outdoor <- function(train, test, label) {
+  cat(sprintf("\n--- %s ---\n", label))
+  res <- rolling_sarimax_pca_24h(train, test, ORDER, SEASONAL, PERIOD)
   actual <- test[[target_col]]
   
   eval <- evaluate_forecast(actual, res$forecasts, "SARIMAX_PCA_OUT_24h")
-  eval[, `:=`(Runtime_min = res$runtime,
-              Train_min = res$train_time,
-              Predict_min = res$predict_time,
-              Period = label,
-              N_Components = res$pca_obj$n_comp,
-              Var_Explained = res$pca_obj$var_explained)]
+  eval[, `:=`(
+    Runtime_min = res$runtime,
+    Train_min   = res$train_time,
+    Predict_min = res$predict_time,
+    Period = label,
+    N_Components  = res$pca_obj$n_comp,
+    Var_Explained = res$pca_obj$var_explained
+  )]
   
   dt <- data.table(Time = seq_along(actual), Actual = actual, Forecast = res$forecasts)
   p <- plot_forecast(dt, "SARIMAX_PCA_OUT_24h", label, color = "purple")
   print(p)
-  
-  # Coefficients print
-  cat("\n--- Coefficients (train fit) ---\n")
-  print(round(coef(res$model), 6))
   
   list(eval = eval, forecasts = dt, plot = p, model = res$model, pca_obj = res$pca_obj)
 }
@@ -200,8 +211,6 @@ resultsB_sarimax_pca_out <- run_sarimax_pca_outdoor(splits$trainB, splits$testB,
 all_eval_sarimax_pca_out <- rbind(resultsA_sarimax_pca_out$eval, resultsB_sarimax_pca_out$eval)
 print(all_eval_sarimax_pca_out)
 
-# --- Print summary ---
-cat("\n--- Summary (SARIMAX_PCA_OUT) ---\n")
 cat(sprintf("Model: %s\n", resultsA_sarimax_pca_out$eval$Model[1]))
 cat(sprintf(
   "Period A: RMSE=%.2f | MAE=%.2f | MAPE=%.2f%% | R2=%.4f | PCs=%d (%.2f%%) | Time=%.2f (Train=%.2f, Predict=%.2f)\n",
@@ -229,6 +238,7 @@ cat(sprintf(
 # --- Save results ---
 timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
 save_name <- sprintf("Results_SARIMAX_PCA_OUT_24h_%s.rds", timestamp)
+
 saveRDS(
   list(
     model = "SARIMAX_PCA_OUT_24h",
@@ -236,11 +246,14 @@ saveRDS(
     period_B = resultsB_sarimax_pca_out,
     evaluations = all_eval_sarimax_pca_out,
     parameters = list(
-      order = ORDER, seasonal = SEASONAL, period = PERIOD,
-      pca_vars = env_outdoor, pca_var_threshold = PCA_VAR_THRESHOLD
+      order = ORDER,
+      seasonal = SEASONAL,
+      period = PERIOD,
+      pca_vars = env_outdoor,
+      pca_var_threshold = PCA_VAR_THRESHOLD
     )
   ),
   file = save_name
 )
-cat(sprintf("\nResults saved to: %s\n", save_name))
-cat("SARIMAX (PCA OUT) 24-hour forecast complete!\n")
+
+cat(sprintf("\nResults and models saved to: %s\n", save_name))
