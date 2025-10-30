@@ -16,7 +16,7 @@ initialize_environment <- function() {
   # Python version
   message("Configuring Python environment...")
   library(reticulate)
-  # use_python("C:/Users/pauli/AppData/Local/Programs/Python/Python310/python.exe", required = TRUE)
+  use_python("C:/Users/pauli/AppData/Local/Programs/Python/Python310/python.exe", required = TRUE)
   
   # Install required R packages
   packages <- c(

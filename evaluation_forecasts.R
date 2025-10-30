@@ -176,6 +176,48 @@ print(plot_error_facet(all_forecasts_A))
 print(plot_error_overlay(all_forecasts_B))
 print(plot_error_facet(all_forecasts_B))
 
+# --- QQ plots of forecast errors ---
+plot_qq_facet <- function(df, title) {
+  ggplot(df, aes(sample = Error)) +
+    stat_qq(aes(color = Model), alpha = 0.5, size = 1) +
+    stat_qq_line(aes(color = Model), linetype = "dashed") +
+    facet_wrap(~Model, ncol = 2, scales = "fixed") +
+    scale_color_manual(values = model_colors) +
+    labs(x = "Theoretical Quantiles", y = "Sample Quantiles") +
+    theme_bw(base_size = 11) +
+    theme(strip.text = element_text(face = "bold", size = 9),
+          legend.position = "none")
+}
+
+# Produce QQ plots for both periods
+print(plot_qq_facet(all_forecasts_A, "QQ Plot of Forecast Errors – Period A"))
+print(plot_qq_facet(all_forecasts_B, "QQ Plot of Forecast Errors – Period B"))
+
+# --- Time-Series Plots of Forecast Errors ---
+
+plot_ts_error <- function(df, period_label) {
+  ggplot(df, aes(x = Datetime, y = Error, color = Model)) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "grey40", linewidth = 0.6) +
+    geom_line(linewidth = 0.8, alpha = 0.9) +
+    facet_wrap(~Model, ncol = 1, scales = "fixed") +
+    scale_color_manual(values = model_colors) +
+    scale_x_datetime(date_labels = "%d %b", date_breaks = "2 days") +
+    labs(
+      x = "Date",
+      y = "Forecast Error (kWh)"
+    ) +
+    theme_bw(base_size = 11) +
+    theme(
+      legend.position = "none",
+      strip.text = element_text(face = "bold", size = 9),
+      panel.grid.minor = element_blank()
+    )
+}
+
+# Generate plots for both periods
+print(plot_ts_error(all_forecasts_A, "A"))
+print(plot_ts_error(all_forecasts_B, "B"))
+
 # --- Hourly/daily error analysis --- 
 for (df in list(all_forecasts_A, all_forecasts_B)) df[, Hour := ((Time - 1) %% 24) + 1]
 calc_hourly <- function(df) df[, .(
@@ -199,6 +241,109 @@ plot_hour <- function(df, title) {
 print(plot_hour(by_hour_A, "Forecast Accuracy by Hour – Period A"))
 print(plot_hour(by_hour_B, "Forecast Accuracy by Hour – Period B"))
 
+# --- Hourly/daily error analysis --- 
+
+# Calculate Hour for both datasets
+all_forecasts_A[, Hour := ((Time - 1) %% 24) + 1]
+all_forecasts_B[, Hour := ((Time - 1) %% 24) + 1]
+
+# Calculate Day of Week for both datasets
+all_forecasts_A[, Day := ceiling(Time / 24)]
+all_forecasts_A[, DayOfWeek := ((Day - 1) %% 7) + 1]
+
+all_forecasts_B[, Day := ceiling(Time / 24)]
+all_forecasts_B[, DayOfWeek := ((Day - 1) %% 7) + 1]
+
+dow_labels <- c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+# Calculate hourly metrics
+calc_hourly <- function(df) df[, .(
+  RMSE = sqrt(mean(SquaredError, na.rm = TRUE)),
+  MAE  = mean(AbsError, na.rm = TRUE),
+  MAPE = mean(PercentError, na.rm = TRUE)
+), by = .(Model, Hour)][order(Model, Hour)]
+
+# Calculate daily metrics
+calc_daily <- function(df) {
+  result <- df[, .(
+    RMSE = sqrt(mean(SquaredError, na.rm = TRUE)),
+    MAE  = mean(AbsError, na.rm = TRUE),
+    MAPE = mean(PercentError, na.rm = TRUE)
+  ), by = .(Model, DayOfWeek)]
+  result[, DayName := factor(dow_labels[DayOfWeek], levels = dow_labels)]
+  result[order(Model, DayOfWeek)]
+}
+
+by_hour_A <- calc_hourly(all_forecasts_A)
+by_hour_B <- calc_hourly(all_forecasts_B)
+by_day_A <- calc_daily(all_forecasts_A)
+by_day_B <- calc_daily(all_forecasts_B)
+
+# Hour of Day comparison (Period A vs Period B)
+plot_hourly_comparison <- function(hour_A, hour_B) {
+  # Determine shared y-axis limits
+  y_max <- max(c(hour_A$MAE, hour_B$MAE), na.rm = TRUE)
+  y_min <- min(c(hour_A$MAE, hour_B$MAE), na.rm = TRUE)
+  
+  p_hour_A <- ggplot(hour_A, aes(x = Hour, y = MAE, color = Model, group = Model)) +
+    geom_line(linewidth = 1, alpha = 0.8) +
+    geom_point(size = 2) +
+    scale_color_manual(values = model_colors) +
+    scale_x_continuous(breaks = seq(1, 24, 3)) +
+    coord_cartesian(ylim = c(y_min, y_max)) +
+    labs(title = "Period A", x = "Hour of Day", y = "MAE (kWh)") +
+    theme_minimal(base_size = 12)
+  
+  p_hour_B <- ggplot(hour_B, aes(x = Hour, y = MAE, color = Model, group = Model)) +
+    geom_line(linewidth = 1, alpha = 0.8) +
+    geom_point(size = 2) +
+    scale_color_manual(values = model_colors) +
+    scale_x_continuous(breaks = seq(1, 24, 3)) +
+    coord_cartesian(ylim = c(y_min, y_max)) +
+    labs(title = "Period B", x = "Hour of Day", y = "MAE (kWh)") +
+    theme_minimal(base_size = 12)
+  
+  combined <- p_hour_A + p_hour_B + 
+    plot_layout(guides = "collect") & 
+    theme(legend.position = "bottom") &
+    plot_annotation(theme = theme(plot.title = element_text(face = "bold", hjust = 0.5)))
+  
+  return(combined)
+}
+
+# Day of Week comparison (Period A vs Period B)
+plot_daily_comparison <- function(day_A, day_B) {
+  # Determine shared y-axis limits
+  y_max <- max(c(day_A$MAE, day_B$MAE), na.rm = TRUE)
+  y_min <- min(c(day_A$MAE, day_B$MAE), na.rm = TRUE)
+  
+  p_day_A <- ggplot(day_A, aes(x = DayName, y = MAE, color = Model, group = Model)) +
+    geom_line(linewidth = 1, alpha = 0.8) +
+    geom_point(size = 2) +
+    scale_color_manual(values = model_colors) +
+    coord_cartesian(ylim = c(y_min, y_max)) +
+    labs(title = "Period A", x = "Day of Week", y = "MAE (kWh)") +
+    theme_minimal(base_size = 12)
+  
+  p_day_B <- ggplot(day_B, aes(x = DayName, y = MAE, color = Model, group = Model)) +
+    geom_line(linewidth = 1, alpha = 0.8) +
+    geom_point(size = 2) +
+    scale_color_manual(values = model_colors) +
+    coord_cartesian(ylim = c(y_min, y_max)) +
+    labs(title = "Period B", x = "Day of Week", y = "MAE (kWh)") +
+    theme_minimal(base_size = 12)
+  
+  combined <- p_day_A + p_day_B + 
+    plot_layout(guides = "collect") & 
+    theme(legend.position = "bottom") &
+    plot_annotation( theme = theme(plot.title = element_text(face = "bold", hjust = 0.5)))
+  
+  return(combined)
+}
+
+# Print both comparison plots
+print(plot_hourly_comparison(by_hour_A, by_hour_B))
+print(plot_daily_comparison(by_day_A, by_day_B))
 # --- Dm test ---
 perform_dm <- function(actual, f1, f2, h = 24) {
   e1 <- actual - f1; e2 <- actual - f2
